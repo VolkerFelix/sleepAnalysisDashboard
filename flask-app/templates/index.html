@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sleep Analysis Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .card {
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .card-header {
+            background-color: #6c5ce7;
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        .badge-sleep {
+            font-size: 0.9em;
+        }
+        .stage-awake { background-color: #ffeaa7; }
+        .stage-light { background-color: #81ecec; }
+        .stage-deep { background-color: #0984e3; color: white; }
+        .stage-rem { background-color: #6c5ce7; color: white; }
+        .stage-unknown { background-color: #b2bec3; }
+        .btn-primary { 
+            background-color: #6c5ce7;
+            border-color: #6c5ce7;
+        }
+        .btn-primary:hover { 
+            background-color: #5549d6;
+            border-color: #5549d6;
+        }
+        .alert-api {
+            display: none;
+            margin-top: 15px;
+        }
+        #loadingSpinner {
+            display: none;
+        }
+        .text-container {
+            white-space: pre-line;
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
+        .sleep-metrics {
+            font-size: 0.9em;
+        }
+        .insights-section {
+            background-color: #f0f7ff;
+            border-left: 4px solid #6c5ce7;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        #serviceStatus {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-md-12 text-center">
+                <h1 class="display-4">Sleep Analysis Dashboard</h1>
+                <p class="lead">Generate and analyze sleep patterns with AI insights</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Generate Sleep Data</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="sleepDataForm">
+                            <div class="mb-3">
+                                <label for="duration" class="form-label">Sleep Duration (hours)</label>
+                                <input type="number" class="form-control" id="duration" name="duration" value="8" min="1" max="24" step="0.5">
+                            </div>
+                            <div class="mb-3">
+                                <label for="quality" class="form-label">Sleep Quality</label>
+                                <select class="form-select" id="quality" name="quality">
+                                    <option value="good">Good</option>
+                                    <option value="poor">Poor</option>
+                                    <option value="moderate">Moderate</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="userId" class="form-label">User ID (for tracking insights over time)</label>
+                                <input type="text" class="form-control" id="userId" name="user_id" placeholder="Enter user ID">
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="conversational" name="conversational" value="true" checked>
+                                <label class="form-check-label" for="conversational">Use Mistral NLG for conversational analysis</label>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100" id="analyzeBtn">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" id="loadingSpinner"></span>
+                                Analyze Sleep
+                            </button>
+                        </form>
+                        <div class="alert alert-danger mt-3 alert-api" id="apiError"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Service Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="statusContent">
+                            <p>Checking API service status...</p>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-sm w-100 mt-2" id="checkHealthBtn">Check Service Health</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Sleep Analysis Results</h5>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="toggleRawData">
+                            <label class="form-check-label" for="toggleRawData">Show Raw Data</label>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="loadingMessage" class="text-center py-5">
+                            <p class="text-muted">Generate sleep data to see analysis results</p>
+                        </div>
+                        
+                        <div id="analysisResults" style="display:none;">
+                            <!-- NLG Conversational Results -->
+                            <div id="nlgResults">
+                                <div class="text-container mb-4" id="conversationalResponse"></div>
+                                <hr>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>Insights</h6>
+                                        <div id="insightsList" class="insights-section"></div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Recommendations</h6>
+                                        <div id="recommendationsList" class="insights-section"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Sleep Metrics Summary -->
+                            <div id="metricsSummary" class="mt-4">
+                                <h6>Sleep Metrics</h6>
+                                <div class="row sleep-metrics">
+                                    <div class="col-md-3 mb-2">
+                                        <div class="border rounded p-2 text-center">
+                                            <div class="text-muted small">Duration</div>
+                                            <div class="fw-bold" id="sleepDuration">-- hrs</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-2">
+                                        <div class="border rounded p-2 text-center">
+                                            <div class="text-muted small">Efficiency</div>
+                                            <div class="fw-bold" id="sleepEfficiency">--%</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-2">
+                                        <div class="border rounded p-2 text-center">
+                                            <div class="text-muted small">Quality</div>
+                                            <div class="fw-bold" id="sleepQuality">--</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-2">
+                                        <div class="border rounded p-2 text-center">
+                                            <div class="text-muted small">Awakenings</div>
+                                            <div class="fw-bold" id="awakenings">--</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <h6>Sleep Stages</h6>
+                                    <div class="progress" style="height: 30px;" id="sleepStagesBar">
+                                        <!-- Sleep stages will be added here dynamically -->
+                                    </div>
+                                    <div class="d-flex justify-content-between mt-2 small text-muted">
+                                        <div>Bedtime</div>
+                                        <div>Wake-up</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Raw JSON Data (Hidden by Default) -->
+                            <div id="rawDataContainer" class="mt-4" style="display:none;">
+                                <h6>Raw Data</h6>
+                                <pre id="rawDataJson" class="bg-light p-3 rounded" style="max-height: 400px; overflow: auto;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Status Toast -->
+    <div class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true" id="serviceStatus">
+        <div class="d-flex">
+            <div class="toast-body" id="statusMessage">
+                Service is healthy
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+
+    <!-- Bootstrap & Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sleepDataForm = document.getElementById('sleepDataForm');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const apiError = document.getElementById('apiError');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const analysisResults = document.getElementById('analysisResults');
+            const rawDataJson = document.getElementById('rawDataJson');
+            const rawDataContainer = document.getElementById('rawDataContainer');
+            const toggleRawData = document.getElementById('toggleRawData');
+            const checkHealthBtn = document.getElementById('checkHealthBtn');
+            const statusContent = document.getElementById('statusContent');
+            const serviceStatus = document.getElementById('serviceStatus');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            // Generate random user ID if not provided
+            const userIdField = document.getElementById('userId');
+            if (!userIdField.value) {
+                userIdField.value = 'user-' + Math.random().toString(36).substring(2, 10);
+            }
+            
+            // Check service health on page load
+            checkServiceHealth();
+            
+            // Toggle raw data display
+            toggleRawData.addEventListener('change', function() {
+                rawDataContainer.style.display = this.checked ? 'block' : 'none';
+            });
+            
+            // Check service health
+            checkHealthBtn.addEventListener('click', checkServiceHealth);
+            
+            function checkServiceHealth() {
+                statusContent.innerHTML = '<p>Checking service status...</p>';
+                fetch('/health')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'healthy') {
+                            statusContent.innerHTML = `
+                                <div class="alert alert-success">
+                                    <strong>Service is healthy</strong><br>
+                                    <small class="text-muted">${data.service || 'sleep-analysis'}</small>
+                                </div>
+                            `;
+                            showStatusToast('Service is healthy', 'success');
+                        } else {
+                            statusContent.innerHTML = `
+                                <div class="alert alert-danger">
+                                    <strong>Service is unhealthy</strong><br>
+                                    <small>${data.error || 'Unknown error'}</small>
+                                </div>
+                            `;
+                            showStatusToast('Service is unhealthy', 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        statusContent.innerHTML = `
+                            <div class="alert alert-warning">
+                                <strong>Could not connect to service</strong><br>
+                                <small>${error.message}</small>
+                            </div>
+                        `;
+                        showStatusToast('Could not connect to service', 'warning');
+                    });
+            }
+            
+            function showStatusToast(message, type) {
+                serviceStatus.classList.remove('bg-success', 'bg-danger', 'bg-warning');
+                serviceStatus.classList.add(`bg-${type}`);
+                statusMessage.textContent = message;
+                
+                const toast = new bootstrap.Toast(serviceStatus);
+                toast.show();
+            }
+            
+            // Handle form submission
+            sleepDataForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Show loading state
+                loadingSpinner.style.display = 'inline-block';
+                analyzeBtn.disabled = true;
+                apiError.style.display = 'none';
+                
+                // Get form data
+                const formData = new FormData(sleepDataForm);
+                
+                // Send request to analyze endpoint
+                fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading state
+                    loadingSpinner.style.display = 'none';
+                    analyzeBtn.disabled = false;
+                    
+                    // Show results
+                    loadingMessage.style.display = 'none';
+                    analysisResults.style.display = 'block';
+                    
+                    // Store raw data
+                    rawDataJson.textContent = JSON.stringify(data, null, 2);
+                    
+                    // Determine if we're handling conversational or standard analysis
+                    if (data.conversational_response) {
+                        // Show NLG section
+                        document.getElementById('nlgResults').style.display = 'block';
+                        
+                        // Display conversational response
+                        document.getElementById('conversationalResponse').textContent = data.conversational_response;
+                        
+                        // Display insights
+                        const insightsList = document.getElementById('insightsList');
+                        insightsList.innerHTML = '';
+                        if (data.insights && data.insights.length > 0) {
+                            data.insights.forEach(insight => {
+                                insightsList.innerHTML += `<p>${insight}</p>`;
+                            });
+                        } else {
+                            insightsList.innerHTML = '<p>No specific insights available</p>';
+                        }
+                        
+                        // Display recommendations
+                        const recommendationsList = document.getElementById('recommendationsList');
+                        recommendationsList.innerHTML = '';
+                        if (data.recommendations && data.recommendations.length > 0) {
+                            data.recommendations.forEach(rec => {
+                                recommendationsList.innerHTML += `<p>${rec}</p>`;
+                            });
+                        } else {
+                            recommendationsList.innerHTML = '<p>No recommendations available</p>';
+                        }
+                    }
+                    
+                    // Display sleep metrics (for both types of analysis)
+                    let metrics;
+                    if (data.overall_metrics) {
+                        // Standard analysis response
+                        metrics = data.overall_metrics;
+                    } else if (data.summary) {
+                        // Get metrics from the raw data for conversational response
+                        try {
+                            // Try to extract metrics from raw data
+                            const rawData = JSON.parse(rawDataJson.textContent);
+                            metrics = rawData.overall_metrics;
+                        } catch (e) {
+                            console.error('Error extracting metrics:', e);
+                        }
+                    }
+                    
+                    if (metrics) {
+                        // Set metrics data
+                        document.getElementById('sleepDuration').textContent = (metrics.total_duration_minutes / 60).toFixed(1) + ' hrs';
+                        document.getElementById('sleepEfficiency').textContent = metrics.sleep_efficiency.toFixed(1) + '%';
+                        document.getElementById('sleepQuality').textContent = metrics.sleep_quality;
+                        document.getElementById('awakenings').textContent = metrics.awakenings_count;
+                        
+                        // Create sleep stages visualization if available
+                        if (data.sleep_stages && data.sleep_stages.length > 0) {
+                            createSleepStagesBar(data.sleep_stages, metrics.total_duration_minutes);
+                        }
+                    }
+                })
+                .catch(error => {
+                    // Hide loading state
+                    loadingSpinner.style.display = 'none';
+                    analyzeBtn.disabled = false;
+                    
+                    // Show error
+                    apiError.style.display = 'block';
+                    apiError.textContent = 'Error: ' + error.message;
+                    console.error('Error:', error);
+                });
+            });
+            
+            function createSleepStagesBar(stages, totalDuration) {
+                const sleepStagesBar = document.getElementById('sleepStagesBar');
+                sleepStagesBar.innerHTML = '';
+                
+                // Sort stages by start time
+                stages.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+                
+                // Calculate percentage for each stage
+                stages.forEach(stage => {
+                    const start = new Date(stage.start_time);
+                    const end = new Date(stage.end_time);
+                    const durationMinutes = (end - start) / (1000 * 60);
+                    const percentage = (durationMinutes / totalDuration) * 100;
+                    
+                    // Create stage element
+                    const stageElement = document.createElement('div');
+                    stageElement.className = `progress-bar stage-${stage.stage_type}`;
+                    stageElement.style.width = `${percentage}%`;
+                    stageElement.setAttribute('title', `${stage.stage_type}: ${durationMinutes.toFixed(1)} min`);
+                    stageElement.setAttribute('data-bs-toggle', 'tooltip');
+                    
+                    // Add to bar
+                    sleepStagesBar.appendChild(stageElement);
+                });
+                
+                // Initialize tooltips
+                const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+                tooltips.forEach(tooltip => new bootstrap.Tooltip(tooltip));
+            }
+        });
+    </script>
+</body>
+</html>
